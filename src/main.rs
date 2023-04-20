@@ -1,4 +1,4 @@
-use bevy::prelude::*;
+use bevy::{input::mouse::MouseButtonInput, prelude::*};
 use bevy_ecs_tilemap::prelude::*;
 
 // Side length of a colored quadrant (in number of tiles)
@@ -141,7 +141,7 @@ fn camera_movement(
             ortho.scale += 1.0;
         }
         if keyboard_input.pressed(KeyCode::X) {
-            ortho.scale -= 1.0; 
+            ortho.scale -= 1.0;
         }
 
         if ortho.scale < 10.0 {
@@ -155,6 +155,39 @@ fn camera_movement(
     }
 }
 
+#[derive(Resource, Default)]
+struct MouseDragState {
+    is_dragging: bool,
+    last_pos: Vec2,
+}
+
+fn mouse_drag_panning(
+    mut state: ResMut<MouseDragState>,
+    mut mouse_button_events: EventReader<MouseButtonInput>,
+    mut cursor_moved_events: EventReader<CursorMoved>,
+    mut camera_xform_q: Query<(&mut Transform, &OrthographicProjection), With<Camera2d>>,
+) {
+    for event in mouse_button_events.iter() {
+        if event.button == MouseButton::Left {
+            state.is_dragging = !state.is_dragging;
+        }
+    }
+
+    if let Some(event) = cursor_moved_events.iter().last() {
+        let delta = event.position - state.last_pos;
+        state.last_pos = event.position;
+
+        if !state.is_dragging {
+            return;
+        }
+
+        for (mut xform, projection) in camera_xform_q.iter_mut() {
+            let scale = projection.scale;
+            xform.translation -= Vec3::new(scale * delta.x, scale * delta.y, 0.0);
+        }
+    }
+}
+
 fn main() {
     App::new()
         .add_plugins(DefaultPlugins.set(WindowPlugin {
@@ -164,9 +197,11 @@ fn main() {
             }),
             ..default()
         }))
+        .init_resource::<MouseDragState>()
         .add_plugin(TilemapPlugin)
         .add_startup_system(startup)
         .add_system(camera_movement)
         .add_system(swap_mesh_type)
+        .add_system(mouse_drag_panning)
         .run();
 }
