@@ -1,207 +1,239 @@
-use bevy::{input::mouse::MouseButtonInput, prelude::*};
+use bevy::{ecs::system::Resource, input::Input, prelude::*};
 use bevy_ecs_tilemap::prelude::*;
 
-// Side length of a colored quadrant (in number of tiles)
-const QUADRANT_SIDE_LENGTH: u32 = 80;
+mod camera_movement;
 
-fn startup(mut commands: Commands, asset_server: Res<AssetServer>) {
-    commands.spawn(Camera2dBundle {
-        projection: OrthographicProjection {
-            scale: 10.0,
-            ..default()
-        },
-        ..default()
-    });
+use camera_movement::CameraMovement;
 
-    let texture_handle: Handle<Image> = asset_server.load("hex.png");
+// Press SPACE to change map type. Hover over a tile to highlight its label (red) and those of its
+// neighbors (blue). Press and hold one of keys 0-5 to mark the neighbor in that direction (green).
+
+// You can increase the MAP_SIDE_LENGTH, in order to test larger maps but just make sure that you run
+// in release mode (`cargo run --release --example hexagon_generation`) otherwise things might be too
+// slow.
+const MAP_SIDE_LENGTH: u32 = 8;
+
+const TILE_SIZE_HEX_ROW: TilemapTileSize = TilemapTileSize { x: 50.0, y: 58.0 };
+const TILE_SIZE_HEX_COL: TilemapTileSize = TilemapTileSize { x: 58.0, y: 50.0 };
+const GRID_SIZE_HEX_ROW: TilemapGridSize = TilemapGridSize { x: 50.0, y: 58.0 };
+const GRID_SIZE_HEX_COL: TilemapGridSize = TilemapGridSize { x: 58.0, y: 50.0 };
+
+#[derive(Deref, Resource)]
+pub struct TileHandleHexRow(Handle<Image>);
+
+#[derive(Deref, Resource)]
+pub struct TileHandleHexCol(Handle<Image>);
+
+#[derive(Deref, Resource)]
+pub struct TileHandleSquare(Handle<Image>);
+
+#[derive(Deref, Resource)]
+pub struct TileHandleIso(Handle<Image>);
+
+#[derive(Deref, Resource)]
+pub struct FontHandle(Handle<Font>);
+
+impl FromWorld for TileHandleHexCol {
+    fn from_world(world: &mut World) -> Self {
+        let asset_server = world.resource::<AssetServer>();
+        Self(asset_server.load("bw-tile-hex-col.png"))
+    }
+}
+impl FromWorld for TileHandleHexRow {
+    fn from_world(world: &mut World) -> Self {
+        let asset_server = world.resource::<AssetServer>();
+        Self(asset_server.load("bw-tile-hex-row.png"))
+    }
+}
+impl FromWorld for FontHandle {
+    fn from_world(world: &mut World) -> Self {
+        let asset_server = world.resource::<AssetServer>();
+        Self(asset_server.load("fonts/FiraSans-Bold.ttf"))
+    }
+}
+
+// Generates the initial tilemap, which is a square grid.
+fn spawn_tilemap(mut commands: Commands, tile_handle_hex_row: Res<TileHandleHexRow>) {
+    commands.spawn(Camera2dBundle::default());
 
     let map_size = TilemapSize {
-        x: QUADRANT_SIDE_LENGTH * 2,
-        y: QUADRANT_SIDE_LENGTH * 2,
-    };
-    let quadrant_size = TilemapSize {
-        x: QUADRANT_SIDE_LENGTH,
-        y: QUADRANT_SIDE_LENGTH,
+        x: MAP_SIDE_LENGTH,
+        y: MAP_SIDE_LENGTH,
     };
 
     let mut tile_storage = TileStorage::empty(map_size);
     let tilemap_entity = commands.spawn_empty().id();
     let tilemap_id = TilemapId(tilemap_entity);
 
-    fill_tilemap_rect(
+    let hex_coord_system = HexCoordSystem::Row;
+
+    fill_tilemap_hexagon(
         TileTextureIndex(0),
-        TilePos { x: 0, y: 0 },
-        quadrant_size,
+        TilePos {
+            x: MAP_SIDE_LENGTH / 2,
+            y: MAP_SIDE_LENGTH / 2,
+        },
+        MAP_SIDE_LENGTH / 2,
+        hex_coord_system,
         tilemap_id,
         &mut commands,
         &mut tile_storage,
     );
 
-    fill_tilemap_rect(
-        TileTextureIndex(1),
-        TilePos {
-            x: QUADRANT_SIDE_LENGTH,
-            y: 0,
-        },
-        quadrant_size,
-        tilemap_id,
-        &mut commands,
-        &mut tile_storage,
-    );
-
-    fill_tilemap_rect(
-        TileTextureIndex(2),
-        TilePos {
-            x: 0,
-            y: QUADRANT_SIDE_LENGTH,
-        },
-        quadrant_size,
-        tilemap_id,
-        &mut commands,
-        &mut tile_storage,
-    );
-    fill_tilemap_rect(
-        TileTextureIndex(3),
-        TilePos {
-            x: QUADRANT_SIDE_LENGTH,
-            y: QUADRANT_SIDE_LENGTH,
-        },
-        quadrant_size,
-        tilemap_id,
-        &mut commands,
-        &mut tile_storage,
-    );
-
-    let tile_size = TilemapTileSize { x: 587.0, y: 512.0 };
-    let grid_size = TilemapGridSize { x: 587.0, y: 512.0 };
-    let map_type = TilemapType::Hexagon(HexCoordSystem::Column);
+    let tile_size = TILE_SIZE_HEX_ROW;
+    let grid_size = GRID_SIZE_HEX_ROW;
+    let map_type = TilemapType::Hexagon(hex_coord_system);
 
     commands.entity(tilemap_entity).insert(TilemapBundle {
         grid_size,
         size: map_size,
         storage: tile_storage,
-        texture: TilemapTexture::Single(texture_handle),
+        texture: TilemapTexture::Single(tile_handle_hex_row.clone()),
         tile_size,
         map_type,
         transform: get_tilemap_center_transform(&map_size, &grid_size, &map_type, 0.0),
-        ..default()
+        ..Default::default()
     });
 }
 
-fn swap_mesh_type(
-    mut query: Query<(
+#[derive(Component)]
+pub struct MapTypeLabel;
+
+// Generates the map type label: e.g. `Square { diagonal_neighbors: false }`
+fn spawn_map_type_label(
+    mut commands: Commands,
+    font_handle: Res<FontHandle>,
+    windows: Query<&Window>,
+    map_type_q: Query<&TilemapType>,
+) {
+    let text_style = TextStyle {
+        font: font_handle.clone(),
+        font_size: 20.0,
+        color: Color::BLACK,
+    };
+    let text_alignment = TextAlignment::Center;
+
+    for window in windows.iter() {
+        for map_type in map_type_q.iter() {
+            // Place the map type label somewhere in the top left side of the screen
+            let transform = Transform {
+                translation: Vec2::new(-0.5 * window.width() / 2.0, 0.8 * window.height() / 2.0)
+                    .extend(1.0),
+                ..Default::default()
+            };
+            commands.spawn((
+                Text2dBundle {
+                    text: Text::from_section(format!("{map_type:?}"), text_style.clone())
+                        .with_alignment(text_alignment),
+                    transform,
+                    ..default()
+                },
+                MapTypeLabel,
+            ));
+        }
+    }
+}
+
+// Swaps the map type, when user presses SPACE
+#[allow(clippy::too_many_arguments)]
+fn swap_map_type(
+    mut commands: Commands,
+    mut tilemap_query: Query<(
+        Entity,
         &mut Transform,
         &TilemapSize,
-        &TilemapGridSize,
         &mut TilemapType,
+        &mut TilemapGridSize,
+        &mut TilemapTexture,
+        &mut TilemapTileSize,
+        &mut TileStorage,
     )>,
     keyboard_input: Res<Input<KeyCode>>,
+    mut map_type_label_q: Query<&mut Text, With<MapTypeLabel>>,
+    tile_handle_hex_row: Res<TileHandleHexRow>,
+    tile_handle_hex_col: Res<TileHandleHexCol>,
 ) {
     if keyboard_input.just_pressed(KeyCode::Space) {
-        for (mut transform, map_size, grid_size, mut map_type) in query.iter_mut() {
-            match *map_type {
-                TilemapType::Hexagon(HexCoordSystem::Column) => {
-                    *map_type = TilemapType::Hexagon(HexCoordSystem::ColumnEven);
+        for (
+            map_id,
+            mut map_transform,
+            map_size,
+            mut map_type,
+            mut grid_size,
+            mut map_texture,
+            mut tile_size,
+            mut tile_storage,
+        ) in tilemap_query.iter_mut()
+        {
+            // Remove all previously spawned tiles.
+            for possible_entity in tile_storage.iter_mut() {
+                // see documentation for take to understand how it works:
+                // https://doc.rust-lang.org/std/option/enum.Option.html#method.take
+                if let Some(entity) = possible_entity.take() {
+                    commands.entity(entity).despawn_recursive();
                 }
-                TilemapType::Hexagon(HexCoordSystem::ColumnEven) => {
-                    *map_type = TilemapType::Hexagon(HexCoordSystem::ColumnOdd);
-                }
-                TilemapType::Hexagon(HexCoordSystem::ColumnOdd) => {
-                    *map_type = TilemapType::Hexagon(HexCoordSystem::Column);
-                }
-                _ => {}
             }
 
-            *transform = get_tilemap_center_transform(map_size, grid_size, &map_type, 0.0);
-        }
-    }
-}
+            let new_coord_sys = match map_type.as_ref() {
+                TilemapType::Hexagon(HexCoordSystem::Row) => HexCoordSystem::Column,
+                TilemapType::Hexagon(HexCoordSystem::Column) => HexCoordSystem::Row,
+                _ => unreachable!(),
+            };
 
-fn camera_movement(
-    time: Res<Time>,
-    keyboard_input: Res<Input<KeyCode>>,
-    mut query: Query<(&mut Transform, &mut OrthographicProjection), With<Camera>>,
-) {
-    for (mut transform, mut ortho) in query.iter_mut() {
-        let mut direction = Vec3::ZERO;
+            *map_type = TilemapType::Hexagon(new_coord_sys);
 
-        if keyboard_input.pressed(KeyCode::A) {
-            direction -= Vec3::new(1.0, 0.0, 0.0);
-        }
-        if keyboard_input.pressed(KeyCode::D) {
-            direction += Vec3::new(1.0, 0.0, 0.0);
-        }
-        if keyboard_input.pressed(KeyCode::W) {
-            direction += Vec3::new(0.0, 1.0, 0.0);
-        }
-        if keyboard_input.pressed(KeyCode::S) {
-            direction -= Vec3::new(0.0, 1.0, 0.0);
-        }
-        if keyboard_input.pressed(KeyCode::Z) {
-            ortho.scale += 1.0;
-        }
-        if keyboard_input.pressed(KeyCode::X) {
-            ortho.scale -= 1.0;
-        }
+            if new_coord_sys == HexCoordSystem::Column {
+                *map_texture = TilemapTexture::Single((*tile_handle_hex_col).clone());
+                *tile_size = TILE_SIZE_HEX_COL;
+                *grid_size = GRID_SIZE_HEX_COL;
+            } else if new_coord_sys == HexCoordSystem::Row {
+                *map_texture = TilemapTexture::Single((*tile_handle_hex_row).clone());
+                *tile_size = TILE_SIZE_HEX_ROW;
+                *grid_size = GRID_SIZE_HEX_ROW;
+            }
 
-        if ortho.scale < 10.0 {
-            ortho.scale = 10.0;
-        }
+            *map_transform = get_tilemap_center_transform(map_size, &grid_size, &map_type, 0.0);
 
-        // It is important not to change z, as it can mess with how the layers are shown.
-        let z = transform.translation.z;
-        transform.translation += time.delta_seconds() * direction * 10000.0;
-        transform.translation.z = z;
-    }
-}
+            // Re-generate tiles in a hexagonal pattern.
+            fill_tilemap_hexagon(
+                TileTextureIndex(0),
+                TilePos {
+                    x: MAP_SIDE_LENGTH / 2,
+                    y: MAP_SIDE_LENGTH / 2,
+                },
+                MAP_SIDE_LENGTH / 2,
+                new_coord_sys,
+                TilemapId(map_id),
+                &mut commands,
+                &mut tile_storage,
+            );
 
-#[derive(Resource, Default)]
-struct MouseDragState {
-    is_dragging: bool,
-    last_pos: Vec2,
-}
-
-fn mouse_drag_panning(
-    mut state: ResMut<MouseDragState>,
-    mut mouse_button_events: EventReader<MouseButtonInput>,
-    mut cursor_moved_events: EventReader<CursorMoved>,
-    mut camera_xform_q: Query<(&mut Transform, &OrthographicProjection), With<Camera2d>>,
-) {
-    for event in mouse_button_events.iter() {
-        if event.button == MouseButton::Left {
-            state.is_dragging = !state.is_dragging;
-        }
-    }
-
-    if let Some(event) = cursor_moved_events.iter().last() {
-        let delta = event.position - state.last_pos;
-        state.last_pos = event.position;
-
-        if !state.is_dragging {
-            return;
-        }
-
-        for (mut xform, projection) in camera_xform_q.iter_mut() {
-            let scale = projection.scale;
-            xform.translation -= Vec3::new(scale * delta.x, scale * delta.y, 0.0);
+            for mut label_text in map_type_label_q.iter_mut() {
+                label_text.sections[0].value = format!("{:?}", map_type.as_ref());
+            }
         }
     }
 }
 
 fn main() {
     App::new()
-        .add_plugins(DefaultPlugins.set(WindowPlugin {
-            primary_window: Some(Window {
-                title: "Hexagon Column Example".into(),
-                ..default()
-            }),
-            ..default()
-        }))
-        .init_resource::<MouseDragState>()
+        .add_plugins(
+            DefaultPlugins
+                .set(WindowPlugin {
+                    primary_window: Some(Window {
+                        title: String::from("Generating a hexagonal hex map"),
+                        ..Default::default()
+                    }),
+                    ..default()
+                })
+                .set(ImagePlugin::default_nearest()),
+        )
         .add_plugin(TilemapPlugin)
-        .add_startup_system(startup)
-        .add_system(camera_movement)
-        .add_system(swap_mesh_type)
-        .add_system(mouse_drag_panning)
+        .add_plugin(CameraMovement)
+        .init_resource::<TileHandleHexCol>()
+        .init_resource::<TileHandleHexRow>()
+        .init_resource::<FontHandle>()
+        .add_startup_systems((spawn_tilemap, apply_system_buffers, spawn_map_type_label).chain())
+        .add_system(swap_map_type)
         .run();
 }
