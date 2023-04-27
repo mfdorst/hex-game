@@ -66,11 +66,11 @@ fn mouse_wheel_camera_zoom(
                 // Depending on the device, the scroll units could be different.
                 MouseScrollUnit::Line => {
                     // Fixed step scrolling (Windows)
-                    ortho.scale += event.y * SCROLL_LINE_ZOOM_FACTOR;
+                    ortho.scale -= event.y * SCROLL_LINE_ZOOM_FACTOR;
                 }
                 MouseScrollUnit::Pixel => {
                     // Smooth scrolling (MacOS)
-                    ortho.scale += event.y * SCROLL_PIXEL_ZOOM_FACTOR;
+                    ortho.scale -= event.y * SCROLL_PIXEL_ZOOM_FACTOR;
                 }
             }
             if ortho.scale < MIN_SCALE {
