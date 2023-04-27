@@ -10,7 +10,7 @@ impl Plugin for MapGen {
     }
 }
 
-const MAP_SIDE_LENGTH: u32 = 8;
+const MAP_SIDE_LENGTH: u32 = 32;
 
 const TILE_SIZE: TilemapTileSize = TilemapTileSize { x: 58.0, y: 50.0 };
 const GRID_SIZE: TilemapGridSize = TilemapGridSize { x: 58.0, y: 50.0 };
