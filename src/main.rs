@@ -3,7 +3,6 @@ use bevy_ecs_tilemap::prelude::*;
 
 mod camera_movement;
 mod cursor;
-mod hex;
 mod map_gen;
 mod player;
 
