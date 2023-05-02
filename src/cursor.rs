@@ -12,8 +12,7 @@ impl Plugin for CursorTrackingPlugin {
         app.init_resource::<CursorPos>()
             .init_resource::<HoveredTile>()
             .add_system(update_cursor_pos.in_base_set(CoreSet::First))
-            .add_system(update_hovered_tile)
-            .add_system(print_hovered_tile_coords);
+            .add_system(update_hovered_tile);
     }
 }
 
@@ -60,8 +59,4 @@ fn update_hovered_tile(
             *hovered_tile = HoveredTile(tile_pos);
         }
     }
-}
-
-fn print_hovered_tile_coords(hovered_tile: Res<HoveredTile>) {
-    eprintln!("{hovered_tile:?}");
 }
