@@ -2,10 +2,15 @@ use bevy::prelude::*;
 use bevy_ecs_tilemap::prelude::*;
 
 mod camera_movement;
+mod cursor;
+mod hex;
 mod map_gen;
+mod player;
 
 use camera_movement::CameraMovement;
+use cursor::CursorTrackingPlugin;
 use map_gen::MapGen;
+use player::PlayerPlugin;
 
 fn main() {
     App::new()
@@ -23,5 +28,7 @@ fn main() {
         .add_plugin(TilemapPlugin)
         .add_plugin(CameraMovement)
         .add_plugin(MapGen)
+        .add_plugin(PlayerPlugin)
+        .add_plugin(CursorTrackingPlugin)
         .run();
 }

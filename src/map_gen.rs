@@ -1,6 +1,8 @@
 use bevy::prelude::*;
 use bevy_ecs_tilemap::prelude::*;
 
+use crate::hex::spawn_color_hex;
+
 pub struct MapGen;
 
 impl Plugin for MapGen {
@@ -37,7 +39,7 @@ fn generate_map(mut commands: Commands, tile_handle_hex_col: Res<TileHandle>) {
     let tilemap_entity = commands.spawn_empty().id();
     let tilemap_id = TilemapId(tilemap_entity);
 
-    let hex_coord_system = HexCoordSystem::Column;
+    let hex_coord_system = HexCoordSystem::ColumnEven;
 
     fill_tilemap_hexagon(
         TileTextureIndex(0),
@@ -47,6 +49,35 @@ fn generate_map(mut commands: Commands, tile_handle_hex_col: Res<TileHandle>) {
         },
         MAP_SIDE_LENGTH / 2,
         hex_coord_system,
+        tilemap_id,
+        &mut commands,
+        &mut tile_storage,
+    );
+
+    spawn_color_hex(
+        TilePos { x: 0, y: 0 },
+        Color::RED,
+        tilemap_id,
+        &mut commands,
+        &mut tile_storage,
+    );
+    spawn_color_hex(
+        TilePos { x: 1, y: 0 },
+        Color::BLUE,
+        tilemap_id,
+        &mut commands,
+        &mut tile_storage,
+    );
+    spawn_color_hex(
+        TilePos { x: 0, y: 1 },
+        Color::GREEN,
+        tilemap_id,
+        &mut commands,
+        &mut tile_storage,
+    );
+    spawn_color_hex(
+        TilePos { x: 1, y: 1 },
+        Color::GOLD,
         tilemap_id,
         &mut commands,
         &mut tile_storage,
