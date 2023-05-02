@@ -5,11 +5,13 @@ mod camera_movement;
 mod cursor;
 mod map_gen;
 mod player;
+mod turns;
 
 use camera_movement::CameraMovementPlugin;
 use cursor::CursorTrackingPlugin;
 use map_gen::MapGenPlugin;
 use player::PlayerPlugin;
+use turns::TurnsPlugin;
 
 fn main() {
     App::new()
@@ -29,5 +31,6 @@ fn main() {
         .add_plugin(MapGenPlugin)
         .add_plugin(PlayerPlugin)
         .add_plugin(CursorTrackingPlugin)
+        .add_plugin(TurnsPlugin)
         .run();
 }
