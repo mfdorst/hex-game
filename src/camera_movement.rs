@@ -14,9 +14,9 @@ const SCROLL_LINE_ZOOM_FACTOR: f32 = 0.25;
 const SCROLL_PIXEL_ZOOM_FACTOR: f32 = 1.0;
 const KEYBOARD_PAN_SPEED: f32 = 2.0;
 
-pub struct CameraMovement;
+pub struct CameraMovementPlugin;
 
-impl Plugin for CameraMovement {
+impl Plugin for CameraMovementPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<MouseDragState>()
             .add_system(keyboard_camera_movement)

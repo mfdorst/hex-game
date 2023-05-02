@@ -7,9 +7,9 @@ mod hex;
 mod map_gen;
 mod player;
 
-use camera_movement::CameraMovement;
+use camera_movement::CameraMovementPlugin;
 use cursor::CursorTrackingPlugin;
-use map_gen::MapGen;
+use map_gen::MapGenPlugin;
 use player::PlayerPlugin;
 
 fn main() {
@@ -26,8 +26,8 @@ fn main() {
                 .set(ImagePlugin::default_nearest()),
         )
         .add_plugin(TilemapPlugin)
-        .add_plugin(CameraMovement)
-        .add_plugin(MapGen)
+        .add_plugin(CameraMovementPlugin)
+        .add_plugin(MapGenPlugin)
         .add_plugin(PlayerPlugin)
         .add_plugin(CursorTrackingPlugin)
         .run();
